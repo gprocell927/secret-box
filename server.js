@@ -4,6 +4,11 @@ const bodyParser = require('body-parser')
 const md5 = require('md5')
 const fs = require('fs')
 
+const environment = process.env.NODE_ENV || 'development';
+const configuration = require('./knexfile')[environment];
+const database = require('knex')(configuration);
+
+
 app.use(bodyParser.json())
 app.use(bodyParser.urlencoded({ extended: true }))
 app.use(express.static('public'))
@@ -19,13 +24,35 @@ app.get('/', (req, res) => {
   res.send('It\'s a secret to everyone.')
 })
 
-
 app.post('/api/v1/secrets', (request, response) => {
-  const { message } = request.body
+  const { message, owner_id } = request.body
   const id = md5(message)
+
+  const secret = { id, message, owner_id, created_at: new Date }
+  database('secrets').insert(secret)
+    .then(() => {
+      database('secrets').select()
+            .then(function(secrets) {
+              response.status(200).json(secrets);
+            })
+            .catch(function(error) {
+              console.error('somethings wrong with db')
+            });
+          })
+
 
   app.locals.secrets.push({ id, message })
   response.json({ id, message })
+})
+
+app.get('/api/v1/owners/:id', (request, response) => {
+  database('secrets').where('owner_id', request.params.id).select()
+          .then(function(secrets) {
+            response.status(200).json(secrets);
+          })
+          .catch(function(error) {
+            console.error('somethings wrong with redirect')
+          });
 })
 
 app.get('/api/v1/secrets/:id', (req, res) => {
@@ -42,7 +69,13 @@ app.get('/api/v1/secrets/:id', (req, res) => {
 })
 
 app.get('/api/v1/secrets', (request, response) => {
-  response.json(app.locals.secrets)
+  database('secrets').select()
+          .then(function(secrets) {
+            response.status(200).json(secrets);
+          })
+          .catch(function(error) {
+            console.error('somethings wrong with db')
+          });
 })
 
 app.put('/api/v1/secrets/:id', (request, response) => {
